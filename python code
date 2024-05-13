@@ -1,0 +1,108 @@
+import requests
+from datetime import datetime, timedelta
+
+api_url_students = "https://api.learnbasics.fun/training/students/"
+api_url_test_data = "https://api.learnbasics.fun/training/test/data/"
+api_url_concepts = "https://api.learnbasics.fun/training/test/concepts/"
+api_url_test_info = "https://api.learnbasics.fun/training/test/info/"
+
+headers = {
+    "apikey": "1b28274d-1b90-43c3-ad36-dd730905b034"
+}
+
+response_students = requests.get(api_url_students, headers=headers)
+response_test_data = requests.get(api_url_test_data, headers=headers)
+response_concepts = requests.get(api_url_concepts, headers=headers)
+response_test_info = requests.get(api_url_test_info, headers=headers)
+
+if all(response.status_code == 200 for response in [response_students, response_test_data, response_concepts, response_test_info]):
+    data_students = response_students.json()
+    data_test_data = response_test_data.json()
+    data_concepts = response_concepts.json()
+    data_test_info = response_test_info.json()
+
+    latex_code = "\\documentclass[a4paper]{article}\n"
+    latex_code += "\\usepackage[margin=2cm]{geometry}\n"
+    latex_code += "\\usepackage{longtable}\n"
+    latex_code += "\\usepackage{graphicx}\n"
+    latex_code += "\\usepackage{fancyhdr}\n\n"
+    latex_code += "\\pagestyle{fancy}\n"
+    latex_code += "\\fancyhf{}\n"
+    latex_code += "\\chead{\\textbf{\\begin{center} Learn Basics - Learn Basics School \\end{center}}}\n"
+    latex_code += "\\rhead{\\thepage}\n"
+    latex_code += "\\renewcommand{\\headrulewidth}{0pt}\n"
+    latex_code += "\\renewcommand{\\footrulewidth}{0pt}\n\n"
+    latex_code += "\\begin{document}\n\n"
+    latex_code += "Class: {} Subject: {} Chapter Name: {}\\par\n".format(data_test_info["class"], data_test_info["subject"], data_test_info["chapter_name"])
+    latex_code += "Test Name: {} Start Time: {} End Time: {}\\par\n\n".format(data_test_info["test_name"], data_test_info["start_time"], data_test_info["end_time"])
+    latex_code += "\\begin{longtable}{|c|c|c|c|c|c|}\n"
+    latex_code += "\\hline\n"
+    latex_code += "S. No & Name & Last Login & Score & Time Taken (mm:ss) \\\\ \\hline\n"
+
+    def convert_time(seconds):
+        minutes, seconds = divmod(seconds, 60)
+        return "{:02d}:{:02d}".format(minutes, seconds)
+
+    def last_login_time(last_login_days):
+        if last_login_days == 1:
+            return "1 Day Ago"
+        else:
+            return f"{last_login_days} Days Ago"
+
+    for student in data_students:
+        learner_id = student["learner_id"]
+        name = student["student_name"]
+        last_login_days = student["last_login"]
+        last_login_display = last_login_time(last_login_days)
+        score = 0
+        time_taken = 0
+
+        for test_data in data_test_data:
+            if test_data["learner_id"] == learner_id:
+                score += test_data["mark"]
+                time_taken += test_data["time_taken"]
+
+        time_taken_formatted = convert_time(time_taken)
+
+        if time_taken == 0:
+            latex_code += f"{learner_id} & {name} & {last_login_display} & \\multicolumn{{2}}{{c|}}{{Absent}} \\\\ \\cline{{1-3}}\n"
+            latex_code += "\\hline\n"
+        else:
+            score_formatted = f"{score}/{len(data_concepts)}" if score != 0 else "Absent"
+            latex_code += f"{learner_id} & {name} & {last_login_display} & {score_formatted} & {time_taken_formatted} \\\\ \\hline\n"
+
+    latex_code += "\\end{longtable}\n\n"
+    latex_code += "\\newpage\n\n"
+    latex_code += "\\chead{\\textbf{\\begin{center} Learn Basics - Learn Basics School \\end{center}} \\noindent\\rule{\\textwidth}{0.4pt}}\n"
+    latex_code += "Chapter Name: {}\\par\n".format(data_test_info["chapter_name"])
+    latex_code += "Concept Coveblack: {}\\par\n\n".format(data_test_info["concept_coveblack"])
+    latex_code += "Test Name: {}\\par\n\n".format(data_test_info["test_name"])
+    latex_code += "Test Link: {}\\par\n\n".format(data_test_info["test_url"])
+    latex_code += "\\begin{table}[ht]\n"
+    latex_code += "\\centering\n"
+    latex_code += "\\caption{Question wise Performance}\n"
+    latex_code += "\\begin{tabular}{|c|c|}\n"
+    latex_code += "\\hline\n"
+    latex_code += "Concept Name & Performance \\\\ \\hline\n"
+    
+    for concept in data_concepts:
+        concept_name = concept["concept_name"]
+        total_attempts = sum(1 for test_data in data_test_data if test_data["question_id"] == concept["question_id"])
+        correct_attempts = sum(1 for test_data in data_test_data if test_data["question_id"] == concept["question_id"] and test_data["mark"] > 0)
+        percentage = (correct_attempts / total_attempts) * 100 if total_attempts != 0 else 0
+        latex_code += f"{concept_name} & {percentage:.0f}\\% \\\\ \\hline\n"
+    
+    latex_code += "\\end{tabular}\n"
+    latex_code += "\\end{table}\n"
+    latex_code += "\\noindent\\rule{\\textwidth}{0.4pt}\n\n"
+    latex_code += "\\vspace*{\\fill}\n"
+    latex_code += "\\noindent Learn Basics\\par\n"
+    latex_code += "\\end{document}\n"
+
+    print(latex_code)
+
+    with open("test_report.tex", "w") as file:
+        file.write(latex_code)
+
+else:
+    print("Failed to fetch data from API.")
